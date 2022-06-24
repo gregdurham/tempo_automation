@@ -3,6 +3,7 @@ from ruamel.yaml import YAML
 from datetime import date, datetime, timedelta
 import logging
 import sys, getopt
+import click
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 
@@ -36,49 +37,73 @@ def find_worklog(apiKey, accountId, currentDay):
     resp = r.json()
     resp_results = resp.get('results')
     results = []
-    
-    
-    for res in resp_results:
-        model = {
-            "issueKey": res['issue']['key'],
-            "timeSpentSeconds": res.get('timeSpentSeconds'),
-            "startDate": res.get('startDate'),
-            "startTime": res.get('startTime'),
-            "authorAccountId": res['author']['accountId'],
-            "tempoWorklogId": res.get('tempoWorklogId')
-        }
-        results.append(model)
+    if resp_results is not None:
+        for res in resp_results:
+            model = {
+                "issueKey": res['issue']['key'],
+                "timeSpentSeconds": res.get('timeSpentSeconds'),
+                "startDate": res.get('startDate'),
+                "startTime": res.get('startTime'),
+                "authorAccountId": res['author']['accountId'],
+                "tempoWorklogId": res.get('tempoWorklogId')
+            }
+            results.append(model)
 
     return results
 
-def main(argv):
-    inputfile = None
-    accountId = None
-    apiKey = None
+@click.group()
+def cli():
+    """Tempo Automation"""
 
-    try:
-        opts, args = getopt.getopt(argv,"hi:a:k",["ifile=","accountId=", "apiKey="])
-    except getopt.GetoptError:
-        logging.error('workbook.py -i <inputfile> -a <jiraAccountId> -k <apiKey>')
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt == '-h':
-            logging.info('workbook.py -i <inputfile> -a <jiraAccountId> -k <apiKey>')
-            sys.exit()
-        elif opt in ("-i", "--ifile"):
-            inputfile = arg
-        elif opt in ("-a", "--accountId"):
-            accountId = arg
-        elif opt in ("-k", "--apiKey"):
-            apiKey = arg
-    if (inputfile is None) or (accountId is None) or (apiKey is None):
+@cli.command()
+@click.option('--apikey')
+@click.option('--accountid')
+@click.option('--startdate', type=click.DateTime(formats=["%Y-%m-%d"]))
+@click.option('--enddate', type=click.DateTime(formats=["%Y-%m-%d"]))
+
+def dump(apikey, accountid, startdate, enddate):
+    if (apikey is None) or (accountid is None) or (startdate is None) or (enddate is None):
         logging.error(
-            'Missing required parameters, workbook.py -i <inputfile> -a <jiraAccountId> -k <apiKey>'
+            'Missing required parameters, workbook.py dump --apiKey <apiKey> --accountId <jiraAccountId> --startDate <startDate> --endDate <endDate>'
+        )
+        sys.exit(1)
+    startdate = startdate.date()
+    enddate = enddate.date()
+
+    allDates = [startdate+timedelta(days=x) for x in range((enddate-startdate).days)]
+    payload = {}
+    for d in allDates:
+        existing = find_worklog(apikey, accountid, d)
+        strDate = d.isoformat()
+        payload[strDate] = []
+        for e in existing:
+            entry = {}
+            timeSpentSeconds = e['timeSpentSeconds']
+            issueKey = e['issueKey']
+            timeSpentHours = timeSpentSeconds / 60 / 60
+            entry['ticket'] = issueKey
+            entry['time'] = timeSpentHours
+            payload[strDate].append(entry)
+    yaml = YAML()
+    yaml.indent(mapping=2, sequence=4, offset=2)
+    yaml.dump(payload, sys.stdout)
+
+
+@cli.command()
+@click.option('--apikey')
+@click.option('--accountid')
+@click.option('--input')
+@click.option('--dryrun', is_flag=True, default=False)
+
+def populate(apikey, accountid, input, dryrun):
+    if (apikey is None) or (accountid is None) or (input is None) or (dryrun is None):
+        logging.error(
+            'Missing required parameters, workbook.py populate --apiKey <apiKey> --accountId <jiraAccountId> --input <yaml file>'
         )
         sys.exit(1)
 
     try: 
-        with open(inputfile, 'r') as workbook:
+        with open(input, 'r') as workbook:
             try:
                 data = YAML(typ='safe', pure=True).load(workbook)
             except ScannerError as e:
@@ -90,15 +115,12 @@ def main(argv):
                     )
                 )
                 sys.exit(1)
+
     except FileNotFoundError:
         logging.error(
             'Error opening configuration file {}'.format(file_path)
         )
         sys.exit(1)
-    
-    
-
-
 
     for currentDay, logItems in data.items():
         startTime = datetime(currentDay.year, currentDay.month, currentDay.day)
@@ -119,12 +141,12 @@ def main(argv):
                 "timeSpentSeconds": timeSpentSeconds,
                 "startDate": currentDay.isoformat(),
                 "startTime": startTime.strftime("%H:%M:%S"),
-                "authorAccountId": accountId
+                "authorAccountId": accountid
             }
             offset = timedelta(seconds=timeSpentSeconds)
             startTime = startTime + offset
             timecard.append(payload)
-        existing = find_worklog(apiKey, accountId, currentDay)
+        existing = find_worklog(apikey, accountid, currentDay)
         existing_clean = [{x:d[x] for x in d if x != 'tempoWorklogId'} for d in existing]
         worklogIds = [d['tempoWorklogId'] for d in existing]
         
@@ -137,22 +159,46 @@ def main(argv):
             logging.info(
                 'Differences found in worklog for date ' f'{currentDay}' 
             )
+            
+            if dryrun is False:
+                for worklogId in worklogIds:
+                    status, error = delete_worklog(apikey, worklogId)
+                    if not status:
+                        logging.error(
+                            f'Could not delete the worklogId {worklogId} due to {error}' 
+                        )
+                        sys.exit(1)
+                    else:
+                        logging.info(
+                            f'Deleted worklog entry for {currentDay}'
+                        )
+            else:
+                logging.info(
+                    f'''The following entries in Tempo would be replaced by the local config for {currentDay}: 
+{existing_clean}
+                    '''
+                )
 
-            for worklogId in worklogIds:
-                status, error = delete_worklog(apiKey, worklogId)
+
+        if dryrun is False:
+            for entry in timecard:
+                status, error = create_worklog(apikey, entry)
                 if not status:
                     logging.error(
-                        f'Could not delete the worklogId {worklogId} due to {error}' 
+                        f'Could not create the worklog entry for {entry} due to {error}' 
                     )
                     sys.exit(1)
-        
-        for entry in timecard:
-            status, error = create_worklog(apiKey, entry)
-            if not status:
-                logging.error(
-                    f'Could not create the worklog entry for {entry} due to {error}' 
+                else:
+                    logging.info(
+                        f'Successfully created worklog entry for {currentDay}'
+                    )
+        else:
+            logging.info(
+                    f'''The following entries in Tempo would be created for {currentDay}: 
+{timecard}
+                    '''
                 )
-                sys.exit(1)
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    #main(sys.argv[1:])
+    cli()

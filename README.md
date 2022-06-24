@@ -56,18 +56,24 @@ The tool is a "desired" state, which means that the config file is treated as th
 3. If differences exist it will delete the items on that day
 4. It will populate the timesheet as described in the yaml file
 
-This means, if changes were made via the UI, the tool will remove these. 
+The `dryrun` flag can be passed to the `populate` command in order to see differences prior to populating.
 
 How to install:
 ```sh
 pip install -r requirements.txt
-
 ```
 
-How to run:
+In the case that you have entered work into Tempo, and want to pull it down in your config file, you can use the `dump` command, and can redirect standard out to a file
 ```sh
-python workbook.py -i <yaml file> -a <account ID> --apiKey <api key generated in tempo>
+workbook.py dump --apiKey <api key generated in tempo> --accountId <account ID> --startDate <startDate> --endDate <endDate>
 ```
+
+Once you are ready to populate Tempo, you can use the `populate` command to apply the yaml config file, you may also use the optional `dryrun` flag, which will not apply the changes, but show the differences.
+
+```sh
+workbook.py populate --apiKey <api key generated in temp> --accountId <account ID> --input <yaml file> (--dryrun)
+```
+
 To get a Tempo API key:
 ```sh
 Go to Tempo>Settings, scroll down to Data Access and select API integration.
