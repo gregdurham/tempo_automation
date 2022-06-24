@@ -64,7 +64,7 @@ def cli():
 def dump(apikey, accountid, startdate, enddate):
     if (apikey is None) or (accountid is None) or (startdate is None) or (enddate is None):
         logging.error(
-            'Missing required parameters, workbook.py dump --apiKey <apiKey> --accountId <jiraAccountId> --startDate <startDate> --endDate <endDate>'
+            'Missing required parameters, workbook.py dump --apikey <apikey> --accountid <jiraAccountId> --startdate <startdate> --enddate <enddate>'
         )
         sys.exit(1)
     startdate = startdate.date()
@@ -98,7 +98,7 @@ def dump(apikey, accountid, startdate, enddate):
 def populate(apikey, accountid, input, dryrun):
     if (apikey is None) or (accountid is None) or (input is None) or (dryrun is None):
         logging.error(
-            'Missing required parameters, workbook.py populate --apiKey <apiKey> --accountId <jiraAccountId> --input <yaml file>'
+            'Missing required parameters, workbook.py populate --apikey <apikey> --accountid <jiraAccountId> --input <yaml file>'
         )
         sys.exit(1)
 

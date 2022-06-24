@@ -63,15 +63,15 @@ How to install:
 pip install -r requirements.txt
 ```
 
-In the case that you have entered work into Tempo, and want to pull it down in your config file, you can use the `dump` command, and can redirect standard out to a file
+In the case that you have entered work into Tempo, and want to pull it down in your config file, you can use the `dump` command, and can redirect standard out to a file, date format should be in `YYYY-MM-DD` format
 ```sh
-workbook.py dump --apiKey <api key generated in tempo> --accountId <account ID> --startDate <startDate> --endDate <endDate>
+workbook.py dump --apikey <api key generated in tempo> --accountid <account ID> --startdate <startdate> --enddate <enddate>
 ```
 
 Once you are ready to populate Tempo, you can use the `populate` command to apply the yaml config file, you may also use the optional `dryrun` flag, which will not apply the changes, but show the differences.
 
 ```sh
-workbook.py populate --apiKey <api key generated in temp> --accountId <account ID> --input <yaml file> (--dryrun)
+workbook.py populate --apikey <api key generated in temp> --accountid <account ID> --input <yaml file> (--dryrun)
 ```
 
 To get a Tempo API key:
