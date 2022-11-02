@@ -7,6 +7,19 @@ import click
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 
+def get_current_period(apiKey, currentDay):
+    payload = {'from': currentDay, 'to': currentDay}
+    headers = {"Authorization": f"Bearer {apiKey}"}
+    url = f'https://api.tempo.io/4/periods'
+    r = requests.get(url, params=payload, headers=headers)
+    resp = r.json()
+    resp_results = resp.get('periods')
+    if len(resp_results) == 1:
+        resp_results = resp_results[0]
+    else:
+        logging.error('Failed to retrieve the current time card for today')
+    return resp_results
+
 def create_worklog(apiKey, entry):
     headers = {"Authorization": f"Bearer {apiKey}"}
     url = f'https://api.tempo.io/core/3/worklogs'
@@ -121,9 +134,21 @@ def populate(apikey, accountid, input, dryrun):
             'Error opening configuration file {}'.format(file_path)
         )
         sys.exit(1)
+    
+    today = datetime.today()
+    period = get_current_period(apikey, today.strftime("%Y-%m-%d"))
+    periodStart = datetime.strptime(period.get('from'), "%Y-%m-%d")
+    periodEnd = datetime.strptime(period.get('to'), "%Y-%m-%d")
 
     for currentDay, logItems in data.items():
         startTime = datetime(currentDay.year, currentDay.month, currentDay.day)
+
+        if not periodStart <= startTime <= periodEnd:
+            logging.error(
+                f'{currentDay} is not inside of the period starting at {periodStart} or ending at {periodEnd}'
+            )
+            sys.exit(1)
+
         timecard = []
         for logItem in logItems:
             ticket = logItem.get('ticket')
